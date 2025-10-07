@@ -313,6 +313,8 @@ pub(super) unsafe fn get_main_buffer_blur(
 
     let (sample_buffer, _) = fx_buffers.buffers();
 
+    
+
     // First get a fbo for the texture we are about to read into
     let mut sample_fbo = 0u32;
     {
@@ -793,11 +795,14 @@ fn build_texture_mat(
     transform: Transform,
 ) -> Mat3 {
     let dst_src_size = transform.transform_size(src.size);
-    let scale = dst_src_size.to_f64() / dest.size.to_f64();
+        // let scale = dst_src_size.to_f64() / dest.size.to_f64();
 
-    let mut tex_mat = Mat3::IDENTITY;
+    // let mut tex_mat = Mat3::IDENTITY;
     // first bring the damage into src scale
-    tex_mat = Mat3::from_scale(Vec2::new(scale.x as f32, scale.y as f32)) * tex_mat;
+    // tex_mat = Mat3::from_scale(Vec2::new(scale.x as f32, scale.y as f32)) * tex_mat;
+    let scale_x = src.size.w as f32 / texture.w as f32;
+    let scale_y = src.size.h as f32 / texture.h as f32;
+    let mut tex_mat = Mat3::from_scale(Vec2::new(scale_x, scale_y));
 
     // then compensate for the texture transform
     let transform_mat = Mat3::from_cols_array(transform.matrix().as_ref());

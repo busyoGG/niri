@@ -1196,7 +1196,8 @@ impl<W: LayoutElement> Tile<W> {
 
         let blur_element = (blur_config.on && output.is_some())
             .then(|| {
-                let optimized = !self.window.is_floating();
+                // let optimized = !self.window.is_floating();
+                let optimized = false;
 
                 Some(
                     BlurRenderElement::new(
