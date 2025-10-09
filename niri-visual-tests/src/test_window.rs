@@ -272,4 +272,8 @@ impl LayoutElement for TestWindow {
     fn is_urgent(&self) -> bool {
         false
     }
+    
+    fn is_floating(&self) -> bool {
+        false
+    }
 }

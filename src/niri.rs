@@ -178,6 +178,7 @@ use crate::utils::{
 use crate::window::mapped::MappedId;
 use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped, WindowRef};
 use smithay::wayland::seat::WaylandFocus;
+use std::hash::Hash;
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
 
@@ -417,6 +418,8 @@ pub struct Niri {
     /// Window ID for the "dynamic cast" special window for the xdp-gnome picker.
     #[cfg(feature = "xdp-gnome-screencast")]
     pub dynamic_cast_id_for_portal: MappedId,
+
+    pub last_time: RefCell<HashMap<WlSurface, Duration>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -566,7 +569,7 @@ pub enum LockRenderState {
 struct SurfaceFrameThrottlingState {
     /// Output and sequence that the frame callback was last sent at.
     last_sent_at: RefCell<Option<(Output, u32)>>,
-    last_time: RefCell<Duration>,
+    // last_time: RefCell<Duration>,
 }
 
 pub enum CenterCoords {
@@ -609,7 +612,7 @@ impl Default for SurfaceFrameThrottlingState {
     fn default() -> Self {
         Self {
             last_sent_at: RefCell::new(None),
-            last_time: RefCell::new(Duration::ZERO),
+            // last_time: RefCell::new(Duration::ZERO),
         }
     }
 }
@@ -2715,6 +2718,7 @@ impl Niri {
 
             #[cfg(feature = "xdp-gnome-screencast")]
             dynamic_cast_id_for_portal: MappedId::next(),
+            last_time: RefCell::new(HashMap::new()),
         };
 
         niri.reset_pointer_inactivity_timer();
@@ -4309,7 +4313,14 @@ impl Niri {
         let layer_map = layer_map_for_output(output);
         let mut extend_from_layer =
             |elements: &mut SplitElements<LayerSurfaceRenderElement<R>>, layer, for_backdrop| {
-                self.render_layer(renderer, target, &layer_map, layer, elements, for_backdrop);
+                self.render_layer(
+                    renderer,
+                    target,
+                    &layer_map,
+                    layer,
+                    elements,
+                    for_backdrop,
+                );
             };
 
         // The overlay layer elements go next.
@@ -4858,15 +4869,39 @@ impl Niri {
     //     }
     //     self.check_next_send(cur_time,last_time,interval,output);
     // }
-    pub fn delay_to_send_frame_callbacks(&mut self, output: Output, interval: Duration) {
+    pub fn delay_to_send_frame_callbacks(
+        &mut self,
+        surface: WlSurface,
+        output: Output,
+        interval: Duration,
+    ) {
         let timer = Timer::from_duration(interval);
 
         self.event_loop
             .insert_source(timer, move |_, _, state| {
-                state.niri.send_frame_callbacks(&output);
+                state
+                    .niri
+                    .send_frame_callback_for_surface(surface.clone(), &output);
                 TimeoutAction::Drop // 只执行一次
             })
             .unwrap();
+    }
+
+    fn send_frame_callback_for_surface(&mut self, surface: WlSurface, output: &Output) {
+        let frame_callback_time = get_monotonic_time();
+        *self
+            .last_time
+            .borrow_mut()
+            .entry(surface.clone())
+            .or_default() = frame_callback_time;
+
+        send_frames_surface_tree(
+            &surface,
+            output,
+            frame_callback_time,
+            FRAME_CALLBACK_THROTTLE,
+            |_, _| Some(output.clone()),
+        );
     }
 
     pub fn send_frame_callbacks(&mut self, output: &Output) {
@@ -4931,7 +4966,10 @@ impl Niri {
                 .get_or_insert(SurfaceFrameThrottlingState::default);
 
             //check fps throttling
-            let mut last_time = frame_throttling_state.last_time.borrow_mut();
+            // let mut last_time = frame_throttling_state.last_time.borrow_mut();
+            let mut last_time_borrow = self.last_time.borrow_mut();
+            let last_time = last_time_borrow.entry(surface.clone()).or_default();
+
             if let Some(diff) = offscreen_render_fps {
                 if offscreen && primary == false {
                     // let fps_to_interval = 1000 / diff as u64;
@@ -4946,15 +4984,14 @@ impl Niri {
                         // 计算还需要等待多久（纳秒精度）
                         let remaining = interval - time_diff;
 
-                        delayed_surfaces
-                            .borrow_mut()
-                            .insert(surface.clone(), remaining);
+                        let mut delayed = delayed_surfaces.borrow_mut();
+                        delayed.entry(surface.clone()).or_insert(remaining);
 
+                        // debug!("Frame callback throttling: {:?} {:?}", time_diff, remaining);
                         return None;
                     } else {
                         *last_time = frame_callback_time;
                     }
-                    // debug!("Frame callback throttling: {:?} {:?}", time_diff, interval);
                 }
             }
 
@@ -5031,8 +5068,8 @@ impl Niri {
 
         // 在闭包外处理延迟
         let delayed_map = delayed_surfaces.into_inner();
-        for (_, interval) in delayed_map {
-            self.delay_to_send_frame_callbacks(output.clone(), interval);
+        for (surface, interval) in delayed_map {
+            self.delay_to_send_frame_callbacks(surface, output.clone(), interval);
         }
     }
 
