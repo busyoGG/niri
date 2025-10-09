@@ -117,6 +117,10 @@ pub struct ResolvedWindowRules {
 
     /// Override whether to set the Tiled xdg-toplevel state on the window.
     pub tiled_state: Option<bool>,
+
+    pub offscreen_render: Option<bool>,
+
+    pub offscreen_render_fps: Option<u16>,
 }
 
 impl<'a> WindowRef<'a> {
@@ -174,6 +178,8 @@ impl<'a> WindowRef<'a> {
 impl ResolvedWindowRules {
     pub const fn empty() -> Self {
         Self {
+            offscreen_render: None,
+            offscreen_render_fps: None,
             default_width: None,
             default_height: None,
             default_column_display: None,
@@ -365,6 +371,14 @@ impl ResolvedWindowRules {
                 }
                 if let Some(x) = rule.tiled_state {
                     resolved.tiled_state = Some(x);
+                }
+
+                if let Some(x) = rule.offscreen_render {
+                    resolved.offscreen_render = Some(x);
+                }
+
+                if let Some(x) = rule.offscreen_render_fps {
+                    resolved.offscreen_render_fps = Some(x);
                 }
             }
 

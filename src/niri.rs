@@ -177,6 +177,7 @@ use crate::utils::{
 };
 use crate::window::mapped::MappedId;
 use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped, WindowRef};
+use smithay::wayland::seat::WaylandFocus;
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
 
@@ -565,6 +566,7 @@ pub enum LockRenderState {
 struct SurfaceFrameThrottlingState {
     /// Output and sequence that the frame callback was last sent at.
     last_sent_at: RefCell<Option<(Output, u32)>>,
+    last_time: RefCell<Duration>,
 }
 
 pub enum CenterCoords {
@@ -607,6 +609,7 @@ impl Default for SurfaceFrameThrottlingState {
     fn default() -> Self {
         Self {
             last_sent_at: RefCell::new(None),
+            last_time: RefCell::new(Duration::ZERO),
         }
     }
 }
@@ -4849,27 +4852,114 @@ impl Niri {
         }
     }
 
+    // pub fn check_next_send(&mut self, cur_time:Duration,last_time:Duration,interval:Duration,output:&Output){
+    //     if cur_time>=last_time.saturating_add(interval){
+    //         self.send_frame_callbacks(output);
+    //     }
+    //     self.check_next_send(cur_time,last_time,interval,output);
+    // }
+    pub fn delay_to_send_frame_callbacks(&mut self, output: Output, interval: Duration) {
+        let timer = Timer::from_duration(interval);
+
+        self.event_loop
+            .insert_source(timer, move |_, _, state| {
+                state.niri.send_frame_callbacks(&output);
+                TimeoutAction::Drop // 只执行一次
+            })
+            .unwrap();
+    }
+
     pub fn send_frame_callbacks(&mut self, output: &Output) {
         let _span = tracy_client::span!("Niri::send_frame_callbacks");
 
         let state = self.output_state.get(output).unwrap();
         let sequence = state.frame_callback_sequence;
 
+        let mut surface_to_rules: HashMap<WlSurface, (Option<bool>, Option<u16>)> = HashMap::new();
+        let delayed_surfaces = RefCell::new(HashMap::new());
+
+        for (_mon, mapped) in self.layout.windows() {
+            if let Some(surface_cow) = mapped.window.wl_surface() {
+                // let surf = surface_cow.as_ref(); // 不移动，只取引用
+                // surface_to_rules.insert(surf.clone(), mapped.rules().offscreen_render);
+                // debug!(
+                //     "surface_to_rules insert window {:?} with offscreen_render {:?}",
+                //     surf,
+                //     mapped.rules()
+                // )
+                surface_to_rules.insert(
+                    surface_cow.into_owned(),
+                    (
+                        mapped.rules().offscreen_render,
+                        mapped.rules().offscreen_render_fps,
+                    ),
+                );
+            }
+        }
+
+        // debug!(
+        //     "surface_to_rules {:?} \n {:?}",
+        //     surface_to_rules.keys(),
+        //     surface_to_rules.values()
+        // );
+        let frame_callback_time = get_monotonic_time();
+
         let should_send = |surface: &WlSurface, states: &SurfaceData| {
-            // Do the standard primary scanout output check. For pointer surfaces it deduplicates
-            // the frame callbacks across potentially multiple outputs, and for regular windows and
-            // layer-shell surfaces it avoids sending frame callbacks to invisible surfaces.
-            let current_primary_output = surface_primary_scanout_output(surface, states);
-            if current_primary_output.as_ref() != Some(output) {
-                return None;
+            // debug!("should_send called for surface {:?}", surface);
+            let (offscreen_render, offscreen_render_fps) = match surface_to_rules.get(surface) {
+                Some(&(r, fps)) => (r, fps),
+                None => (None, None), // 没找到的话可以给默认值
+            };
+
+            let mut offscreen = false;
+            let mut primary = true;
+
+            if let Some(true) = offscreen_render {
+                offscreen = true;
             }
 
-            // Next, check the throttling status.
+            let current_primary_output = surface_primary_scanout_output(surface, states);
+            if current_primary_output.as_ref() != Some(output) {
+                primary = false;
+                if offscreen == false {
+                    return None;
+                }
+            }
+
             let frame_throttling_state = states
                 .data_map
                 .get_or_insert(SurfaceFrameThrottlingState::default);
-            let mut last_sent_at = frame_throttling_state.last_sent_at.borrow_mut();
 
+            //check fps throttling
+            let mut last_time = frame_throttling_state.last_time.borrow_mut();
+            if let Some(diff) = offscreen_render_fps {
+                if offscreen && primary == false {
+                    // let fps_to_interval = 1000 / diff as u64;
+                    let fps = diff as f64;
+                    let interval_secs = 1.0 / fps;
+                    let interval = Duration::from_secs_f64(interval_secs);
+
+                    // 上一帧到现在的时间差
+                    let time_diff = frame_callback_time.saturating_sub(*last_time);
+
+                    if time_diff < interval {
+                        // 计算还需要等待多久（纳秒精度）
+                        let remaining = interval - time_diff;
+
+                        delayed_surfaces
+                            .borrow_mut()
+                            .insert(surface.clone(), remaining);
+
+                        return None;
+                    } else {
+                        *last_time = frame_callback_time;
+                    }
+                    // debug!("Frame callback throttling: {:?} {:?}", time_diff, interval);
+                }
+            }
+
+            // Next, check the throttling status.
+            let mut last_sent_at = frame_throttling_state.last_sent_at.borrow_mut();
             let mut send = true;
 
             // If we already sent a frame callback to this surface this output refresh
@@ -4888,9 +4978,10 @@ impl Niri {
             }
         };
 
-        let frame_callback_time = get_monotonic_time();
+        // debug!("frame_callback_time: {:?}", frame_callback_time);
 
         for mapped in self.layout.windows_for_output_mut(output) {
+            // debug!("send_frame");
             mapped.send_frame(
                 output,
                 frame_callback_time,
@@ -4936,6 +5027,12 @@ impl Niri {
                 FRAME_CALLBACK_THROTTLE,
                 should_send,
             );
+        }
+
+        // 在闭包外处理延迟
+        let delayed_map = delayed_surfaces.into_inner();
+        for (_, interval) in delayed_map {
+            self.delay_to_send_frame_callbacks(output.clone(), interval);
         }
     }
 
