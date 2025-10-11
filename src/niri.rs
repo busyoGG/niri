@@ -419,7 +419,7 @@ pub struct Niri {
     #[cfg(feature = "xdp-gnome-screencast")]
     pub dynamic_cast_id_for_portal: MappedId,
 
-    pub last_time: RefCell<HashMap<WlSurface, Duration>>,
+    pub last_time: RefCell<HashMap<String, Duration>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -4313,14 +4313,7 @@ impl Niri {
         let layer_map = layer_map_for_output(output);
         let mut extend_from_layer =
             |elements: &mut SplitElements<LayerSurfaceRenderElement<R>>, layer, for_backdrop| {
-                self.render_layer(
-                    renderer,
-                    target,
-                    &layer_map,
-                    layer,
-                    elements,
-                    for_backdrop,
-                );
+                self.render_layer(renderer, target, &layer_map, layer, elements, for_backdrop);
             };
 
         // The overlay layer elements go next.
@@ -4892,7 +4885,7 @@ impl Niri {
         *self
             .last_time
             .borrow_mut()
-            .entry(surface.clone())
+            .entry(surface.id().to_string())
             .or_default() = frame_callback_time;
 
         send_frames_surface_tree(
@@ -4910,20 +4903,14 @@ impl Niri {
         let state = self.output_state.get(output).unwrap();
         let sequence = state.frame_callback_sequence;
 
-        let mut surface_to_rules: HashMap<WlSurface, (Option<bool>, Option<u16>)> = HashMap::new();
         let delayed_surfaces = RefCell::new(HashMap::new());
+        let mut surface_to_rules: HashMap<String, (Option<bool>, Option<u16>)> = HashMap::new();
 
         for (_mon, mapped) in self.layout.windows() {
             if let Some(surface_cow) = mapped.window.wl_surface() {
-                // let surf = surface_cow.as_ref(); // 不移动，只取引用
-                // surface_to_rules.insert(surf.clone(), mapped.rules().offscreen_render);
-                // debug!(
-                //     "surface_to_rules insert window {:?} with offscreen_render {:?}",
-                //     surf,
-                //     mapped.rules()
-                // )
+                let surface = surface_cow.as_ref();
                 surface_to_rules.insert(
-                    surface_cow.into_owned(),
+                    surface.id().to_string(),
                     (
                         mapped.rules().offscreen_render,
                         mapped.rules().offscreen_render_fps,
@@ -4941,10 +4928,11 @@ impl Niri {
 
         let should_send = |surface: &WlSurface, states: &SurfaceData| {
             // debug!("should_send called for surface {:?}", surface);
-            let (offscreen_render, offscreen_render_fps) = match surface_to_rules.get(surface) {
-                Some(&(r, fps)) => (r, fps),
-                None => (None, None), // 没找到的话可以给默认值
-            };
+            let (offscreen_render, offscreen_render_fps) =
+                match surface_to_rules.get(surface.id().to_string().as_str()) {
+                    Some(&(r, fps)) => (r, fps),
+                    None => (None, None), // 没找到的话可以给默认值
+                };
 
             let mut offscreen = false;
             let mut primary = true;
@@ -4967,8 +4955,9 @@ impl Niri {
 
             //check fps throttling
             // let mut last_time = frame_throttling_state.last_time.borrow_mut();
+
             let mut last_time_borrow = self.last_time.borrow_mut();
-            let last_time = last_time_borrow.entry(surface.clone()).or_default();
+            let last_time = last_time_borrow.entry(surface.id().to_string()).or_default();
 
             if let Some(diff) = offscreen_render_fps {
                 if offscreen && primary == false {
@@ -5067,9 +5056,11 @@ impl Niri {
         }
 
         // 在闭包外处理延迟
-        let delayed_map = delayed_surfaces.into_inner();
-        for (surface, interval) in delayed_map {
-            self.delay_to_send_frame_callbacks(surface, output.clone(), interval);
+        {
+            let delayed_map = delayed_surfaces.into_inner();
+            for (surface, interval) in delayed_map {
+                self.delay_to_send_frame_callbacks(surface, output.clone(), interval);
+            }
         }
     }
 
