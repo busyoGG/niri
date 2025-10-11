@@ -4957,7 +4957,9 @@ impl Niri {
             // let mut last_time = frame_throttling_state.last_time.borrow_mut();
 
             let mut last_time_borrow = self.last_time.borrow_mut();
-            let last_time = last_time_borrow.entry(surface.id().to_string()).or_default();
+            let last_time = last_time_borrow
+                .entry(surface.id().to_string())
+                .or_default();
 
             if let Some(diff) = offscreen_render_fps {
                 if offscreen && primary == false {
