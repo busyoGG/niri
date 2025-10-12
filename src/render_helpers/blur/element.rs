@@ -99,7 +99,7 @@ impl BlurRenderElement {
             Self::Optimized {
                 tex: texture.into(),
                 corner_radius,
-                noise: config.noise.0 as f32,
+                noise: config.noise as f32,
                 scale,
             }
         } else {
@@ -170,7 +170,7 @@ impl Element for BlurRenderElement {
             BlurRenderElement::Optimized { tex, .. } => tex.damage_since(scale, commit),
             BlurRenderElement::TrueBlur { config, .. } => {
                 let passes = config.passes;
-                let radius = config.radius.0 as f32;
+                let radius = config.radius as f32;
 
                 // Since the blur element samples from around itself, we must expand the damage it
                 // induces to include any potential changes.
@@ -272,7 +272,7 @@ fn draw_true_blur(
                     ],
                 ),
                 Uniform::new("alpha", alpha),
-                Uniform::new("noise", config.noise.0 as f32),
+                Uniform::new("noise", config.noise as f32),
                 Uniform::new("corner_radius", corner_radius),
             ],
         )
