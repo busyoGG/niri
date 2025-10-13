@@ -156,7 +156,8 @@ fn make_video_params(
     let modifier_property = if modifiers.len() == 0 {
         None
     } else {
-        let dont_fixate = if (!fixated) && modifiers.len() == 1 && modifiers[0] == Modifier::Invalid
+        // let dont_fixate = if (!fixated) && modifiers.len() == 1 && modifiers[0] == Modifier::Invalid
+        let dont_fixate = if modifiers.len() > 1
         {
             PropertyFlags::DONT_FIXATE
         } else {
