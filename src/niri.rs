@@ -419,7 +419,7 @@ pub struct Niri {
     #[cfg(feature = "xdp-gnome-screencast")]
     pub dynamic_cast_id_for_portal: MappedId,
 
-    pub last_time: RefCell<HashMap<String, Duration>>,
+    pub last_time: RefCell<HashMap<u32, Duration>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -4895,7 +4895,7 @@ impl Niri {
         *self
             .last_time
             .borrow_mut()
-            .entry(surface.id().to_string())
+            .entry(surface.id().protocol_id())
             .or_default() = frame_callback_time;
 
         send_frames_surface_tree(
@@ -4914,49 +4914,50 @@ impl Niri {
         let sequence = state.frame_callback_sequence;
 
         let delayed_surfaces = RefCell::new(HashMap::new());
-        let mut surface_to_rules: HashMap<String, (Option<bool>, Option<u16>)> = HashMap::new();
 
-        for (_mon, mapped) in self.layout.windows() {
-            if let Some(surface_cow) = mapped.window.wl_surface() {
-                let surface = surface_cow.as_ref();
-                surface_to_rules.insert(
-                    surface.id().to_string(),
-                    (
-                        mapped.rules().offscreen_render,
-                        mapped.rules().offscreen_render_fps,
-                    ),
-                );
-            }
-        }
-
-        // debug!(
-        //     "surface_to_rules {:?} \n {:?}",
-        //     surface_to_rules.keys(),
-        //     surface_to_rules.values()
-        // );
         let frame_callback_time = get_monotonic_time();
 
         let should_send = |surface: &WlSurface, states: &SurfaceData| {
-            // debug!("should_send called for surface {:?}", surface);
-            let (offscreen_render, offscreen_render_fps) =
-                match surface_to_rules.get(surface.id().to_string().as_str()) {
-                    Some(&(r, fps)) => (r, fps),
-                    None => (None, None), // 没找到的话可以给默认值
-                };
-
-            let mut offscreen = false;
-            let mut primary = true;
-
-            if let Some(true) = offscreen_render {
-                offscreen = true;
+            // Do the standard primary scanout output check. For pointer surfaces it deduplicates
+            // the frame callbacks across potentially multiple outputs, and for regular windows and
+            // layer-shell surfaces it avoids sending frame callbacks to invisible surfaces.
+            let current_primary_output = surface_primary_scanout_output(surface, states);
+            if current_primary_output.as_ref() != Some(output) {
+                return None;
             }
+
+            // Next, check the throttling status.
+            let frame_throttling_state = states
+                .data_map
+                .get_or_insert(SurfaceFrameThrottlingState::default);
+            let mut last_sent_at = frame_throttling_state.last_sent_at.borrow_mut();
+
+            let mut send = true;
+
+            // If we already sent a frame callback to this surface this output refresh
+            // cycle, don't send one again to prevent empty-damage commit busy loops.
+            if let Some((last_output, last_sequence)) = &*last_sent_at {
+                if last_output == output && *last_sequence == sequence {
+                    send = false;
+                }
+            }
+
+            if send {
+                *last_sent_at = Some((output.clone(), sequence));
+                Some(output.clone())
+            } else {
+                None
+            }
+        };
+
+        // for offscreen render
+        let interval = Cell::new(Duration::default());
+        let should_send_offscreen = |surface: &WlSurface, states: &SurfaceData| {
+            let mut primary = true;
 
             let current_primary_output = surface_primary_scanout_output(surface, states);
             if current_primary_output.as_ref() != Some(output) {
                 primary = false;
-                if offscreen == false {
-                    return None;
-                }
             }
 
             let frame_throttling_state = states
@@ -4968,31 +4969,30 @@ impl Niri {
 
             let mut last_time_borrow = self.last_time.borrow_mut();
             let last_time = last_time_borrow
-                .entry(surface.id().to_string())
+                .entry(surface.id().protocol_id())
                 .or_default();
 
-            if let Some(diff) = offscreen_render_fps {
-                if offscreen && primary == false {
-                    // let fps_to_interval = 1000 / diff as u64;
-                    let fps = diff as f64;
-                    let interval_secs = 1.0 / fps;
-                    let interval = Duration::from_secs_f64(interval_secs);
+            let interval = interval.get();
 
-                    // 上一帧到现在的时间差
-                    let time_diff = frame_callback_time.saturating_sub(*last_time);
+            // debug!(
+            //     "frame limit interval {:?} primary {:?} is_zero {:?}",
+            //     interval,
+            //     primary,
+            //     interval.is_zero()
+            // );
 
-                    if time_diff < interval {
-                        // 计算还需要等待多久（纳秒精度）
-                        let remaining = interval - time_diff;
+            if primary == false && !interval.is_zero() {
+                // 上一帧到现在的时间差
+                let time_diff: Duration = frame_callback_time.saturating_sub(*last_time);
 
-                        let mut delayed = delayed_surfaces.borrow_mut();
-                        delayed.entry(surface.clone()).or_insert(remaining);
-
-                        // debug!("Frame callback throttling: {:?} {:?}", time_diff, remaining);
-                        return None;
-                    } else {
-                        *last_time = frame_callback_time;
-                    }
+                if time_diff < interval {
+                    // 计算还需要等待多久（纳秒精度）
+                    let remaining = interval - time_diff;
+                    let mut delayed = delayed_surfaces.borrow_mut();
+                    delayed.entry(surface.clone()).or_insert(remaining);
+                    return None;
+                } else {
+                    *last_time = frame_callback_time;
                 }
             }
 
@@ -5016,16 +5016,30 @@ impl Niri {
             }
         };
 
-        // debug!("frame_callback_time: {:?}", frame_callback_time);
-
         for mapped in self.layout.windows_for_output_mut(output) {
             // debug!("send_frame");
-            mapped.send_frame(
-                output,
-                frame_callback_time,
-                FRAME_CALLBACK_THROTTLE,
-                should_send,
-            );
+            if mapped.rules().offscreen_render == Some(true) {
+                if let Some(offscreen_render_fps) = mapped.rules().offscreen_render_fps {
+                    let fps_limit = offscreen_render_fps as f64;
+                    let interval_secs = 1.0 / fps_limit as f64;
+                    interval.set(Duration::from_secs_f64(interval_secs));
+                } else {
+                    interval.set(Duration::ZERO);
+                }
+                mapped.send_frame(
+                    output,
+                    frame_callback_time,
+                    FRAME_CALLBACK_THROTTLE,
+                    should_send_offscreen,
+                );
+            } else {
+                mapped.send_frame(
+                    output,
+                    frame_callback_time,
+                    FRAME_CALLBACK_THROTTLE,
+                    should_send,
+                );
+            }
         }
 
         for surface in layer_map_for_output(output).layers() {
