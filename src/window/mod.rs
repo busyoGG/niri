@@ -110,6 +110,9 @@ pub struct ResolvedWindowRules {
     /// Whether to block out this window from certain render targets.
     pub block_out_from: Option<BlockOutFrom>,
 
+    // Whether to make this layer surface transparent when block.
+    pub transparent_block: Option<bool>,
+
     /// Whether to enable VRR on this window's primary output if it is on-demand.
     pub variable_refresh_rate: Option<bool>,
 
@@ -251,6 +254,7 @@ impl ResolvedWindowRules {
             variable_refresh_rate: None,
             scroll_factor: None,
             tiled_state: None,
+            transparent_block: None,
         }
     }
 
@@ -380,6 +384,10 @@ impl ResolvedWindowRules {
 
                 if let Some(x) = rule.offscreen_render_fps {
                     resolved.offscreen_render_fps = Some(x);
+                }
+
+                if let Some(x) = rule.transparent_block {
+                    resolved.transparent_block = Some(x);
                 }
             }
 

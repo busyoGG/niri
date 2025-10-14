@@ -15,6 +15,9 @@ pub struct ResolvedLayerRules {
     /// Whether to block out this layer surface from certain render targets.
     pub block_out_from: Option<BlockOutFrom>,
 
+    // Whether to make this layer surface transparent when block.
+    pub transparent_block: Option<bool>,
+
     /// Shadow overrides.
     pub shadow: ShadowRule,
 
@@ -56,6 +59,7 @@ impl ResolvedLayerRules {
             geometry_corner_radius: None,
             place_within_backdrop: false,
             baba_is_float: false,
+            transparent_block: None,
         }
     }
 
@@ -97,6 +101,9 @@ impl ResolvedLayerRules {
             }
             if let Some(x) = rule.baba_is_float {
                 resolved.baba_is_float = x;
+            }
+            if let Some(x) = rule.transparent_block {
+                resolved.transparent_block = Some(x);
             }
 
             resolved.shadow.merge_with(&rule.shadow);

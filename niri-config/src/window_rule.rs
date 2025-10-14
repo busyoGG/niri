@@ -1,6 +1,8 @@
 use niri_ipc::ColumnDisplay;
 
-use crate::appearance::{BlockOutFrom, BlurRule, BorderRule, CornerRadius, ShadowRule, TabIndicatorRule};
+use crate::appearance::{
+    BlockOutFrom, BlurRule, BorderRule, CornerRadius, ShadowRule, TabIndicatorRule,
+};
 use crate::layout::DefaultPresetSize;
 use crate::utils::RegexEq;
 use crate::FloatOrInt;
@@ -76,6 +78,8 @@ pub struct WindowRule {
     pub offscreen_render: Option<bool>,
     #[knuffel(child, unwrap(argument))]
     pub offscreen_render_fps: Option<u16>,
+    #[knuffel(child, unwrap(argument))]
+    pub transparent_block: Option<bool>,
 }
 
 #[derive(knuffel::Decode, Debug, Default, Clone, PartialEq)]

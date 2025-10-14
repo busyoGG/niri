@@ -572,11 +572,17 @@ impl LayoutElement for Mapped {
         let mut rv = SplitElements::default();
 
         if target.should_block_out(self.rules.block_out_from) {
-            let mut buffer = self.block_out_buffer.borrow_mut();
-            buffer.resize(self.window.geometry().size.to_f64());
-            let elem =
-                SolidColorRenderElement::from_buffer(&buffer, location, alpha, Kind::Unspecified);
-            rv.normal.push(elem.into());
+            if !matches!(self.rules.transparent_block, Some(true)) {
+                let mut buffer = self.block_out_buffer.borrow_mut();
+                buffer.resize(self.window.geometry().size.to_f64());
+                let elem = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    location,
+                    alpha,
+                    Kind::Unspecified,
+                );
+                rv.normal.push(elem.into());
+            }
         } else {
             let buf_pos = location - self.window.geometry().loc.to_f64();
 
@@ -616,11 +622,19 @@ impl LayoutElement for Mapped {
         target: RenderTarget,
     ) -> Vec<LayoutElementRenderElement<R>> {
         if target.should_block_out(self.rules.block_out_from) {
-            let mut buffer = self.block_out_buffer.borrow_mut();
-            buffer.resize(self.window.geometry().size.to_f64());
-            let elem =
-                SolidColorRenderElement::from_buffer(&buffer, location, alpha, Kind::Unspecified);
-            vec![elem.into()]
+            if let Some(true) = self.rules.transparent_block {
+                vec![]
+            } else {
+                let mut buffer = self.block_out_buffer.borrow_mut();
+                buffer.resize(self.window.geometry().size.to_f64());
+                let elem = SolidColorRenderElement::from_buffer(
+                    &buffer,
+                    location,
+                    alpha,
+                    Kind::Unspecified,
+                );
+                vec![elem.into()]
+            }
         } else {
             let buf_pos = location - self.window.geometry().loc.to_f64();
             let surface = self.toplevel().wl_surface();

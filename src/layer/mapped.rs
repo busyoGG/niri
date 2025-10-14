@@ -170,17 +170,19 @@ impl MappedLayer {
         let location = location + self.bob_offset();
 
         if target.should_block_out(self.rules.block_out_from) {
-            // Round to physical pixels.
-            let location = location.to_physical_precise_round(scale).to_logical(scale);
+            if !matches!(self.rules.transparent_block, Some(true)) {
+                // Round to physical pixels.
+                let location = location.to_physical_precise_round(scale).to_logical(scale);
 
-            // FIXME: take geometry-corner-radius into account.
-            let elem = SolidColorRenderElement::from_buffer(
-                &self.block_out_buffer,
-                location,
-                alpha,
-                Kind::Unspecified,
-            );
-            rv.normal.push(elem.into());
+                // FIXME: take geometry-corner-radius into account.
+                let elem = SolidColorRenderElement::from_buffer(
+                    &self.block_out_buffer,
+                    location,
+                    alpha,
+                    Kind::Unspecified,
+                );
+                rv.normal.push(elem.into());
+            }
         } else {
             // Layer surfaces don't have extra geometry like windows.
             let buf_pos = location;
