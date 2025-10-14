@@ -116,6 +116,8 @@ pub struct Tile<W: LayoutElement> {
 
     /// Configurable properties of the layout.
     pub(super) options: Rc<Options>,
+
+    pub loc: Rectangle<f64, Logical>,
 }
 
 niri_render_elements! {
@@ -208,6 +210,7 @@ impl<W: LayoutElement> Tile<W> {
             scale,
             clock,
             options,
+            loc: Rectangle::default(),
         }
     }
 
@@ -475,6 +478,8 @@ impl<W: LayoutElement> Tile<W> {
         );
 
         self.fullscreen_backdrop.resize(animated_tile_size);
+
+        self.loc = view_rect;
     }
 
     pub fn scale(&self) -> f64 {
@@ -792,6 +797,7 @@ impl<W: LayoutElement> Tile<W> {
             window_size: self.window().size().into(),
             tile_pos_in_workspace_view: None,
             window_offset_in_tile: self.window_loc().into(),
+            window_location: None,
         }
     }
 

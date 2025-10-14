@@ -2392,9 +2392,11 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             .enumerate()
             .flat_map(move |(col_idx, col)| {
                 col.tiles().enumerate().map(move |(tile_idx, (tile, _))| {
+                    let loc = tile.loc.loc;
                     let layout = WindowLayout {
                         // Our indices are 1-based, consistent with the actions.
                         pos_in_scrolling_layout: Some((col_idx + 1, tile_idx + 1)),
+                        window_location: Some((-loc.x, -loc.y)),
                         ..tile.ipc_layout_template()
                     };
                     (tile, layout)

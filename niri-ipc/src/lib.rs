@@ -1241,6 +1241,9 @@ pub struct WindowLayout {
     /// the distance from the corner of the black backdrop to the corner of the (centered) window
     /// contents.
     pub window_offset_in_tile: (f64, f64),
+
+    /// The window's location on the screen.
+    pub window_location: Option<(f64, f64)>,
 }
 
 /// Output configuration change result.
