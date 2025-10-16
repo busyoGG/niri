@@ -75,9 +75,9 @@ pub struct WindowRule {
     #[knuffel(child, unwrap(argument))]
     pub tiled_state: Option<bool>,
     #[knuffel(child, unwrap(argument))]
-    pub offscreen_render: Option<bool>,
+    pub force_render: Option<bool>,
     #[knuffel(child, unwrap(argument))]
-    pub offscreen_render_fps: Option<u16>,
+    pub force_render_fps: Option<u16>,
     #[knuffel(child, unwrap(argument))]
     pub transparent_block: Option<bool>,
 }

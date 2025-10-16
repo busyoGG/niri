@@ -59,7 +59,7 @@ impl ScreenTransition {
             1.
         };
 
-        let idx = match target {
+        let idx: usize = match target {
             RenderTarget::Output => 0,
             RenderTarget::Screencast => 1,
             RenderTarget::ScreenCapture => 2,
