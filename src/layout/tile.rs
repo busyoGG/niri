@@ -798,6 +798,7 @@ impl<W: LayoutElement> Tile<W> {
             tile_pos_in_workspace_view: None,
             window_offset_in_tile: self.window_loc().into(),
             window_location: None,
+            monitor_name:None
         }
     }
 

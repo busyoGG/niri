@@ -239,6 +239,7 @@ impl<W: LayoutElement> Workspace<W> {
             scale.fractional_scale(),
             clock.clone(),
             options.clone(),
+            Some(output.name())
         );
 
         let floating = FloatingSpace::new(
@@ -247,6 +248,7 @@ impl<W: LayoutElement> Workspace<W> {
             scale.fractional_scale(),
             clock.clone(),
             options.clone(),
+            Some(output.name()),
         );
 
         let shadow_config =
@@ -305,6 +307,7 @@ impl<W: LayoutElement> Workspace<W> {
             scale.fractional_scale(),
             clock.clone(),
             options.clone(),
+            None
         );
 
         let floating = FloatingSpace::new(
@@ -313,6 +316,7 @@ impl<W: LayoutElement> Workspace<W> {
             scale.fractional_scale(),
             clock.clone(),
             options.clone(),
+            None,
         );
 
         let shadow_config =

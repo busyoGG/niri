@@ -67,6 +67,8 @@ pub struct FloatingSpace<W: LayoutElement> {
 
     /// Configurable properties of the layout.
     options: Rc<Options>,
+
+    monitor_name: Option<String>,
 }
 
 niri_render_elements! {
@@ -206,6 +208,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
         scale: f64,
         clock: Clock,
         options: Rc<Options>,
+        monitor_name: Option<String>,
     ) -> Self {
         Self {
             tiles: Vec::new(),
@@ -218,6 +221,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
             scale,
             clock,
             options,
+            monitor_name: monitor_name,
         }
     }
 
@@ -334,6 +338,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
             let layout = WindowLayout {
                 tile_pos_in_workspace_view: Some(pos.into()),
+                monitor_name: self.monitor_name.clone(),
                 ..tile.ipc_layout_template()
             };
             (tile, layout)

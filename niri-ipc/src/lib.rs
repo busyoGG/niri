@@ -1244,6 +1244,8 @@ pub struct WindowLayout {
 
     /// The window's location on the screen.
     pub window_location: Option<(f64, f64)>,
+    /// The window's monitor name.
+    pub monitor_name: Option<String>,
 }
 
 /// Output configuration change result.
