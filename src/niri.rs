@@ -5103,7 +5103,7 @@ impl Niri {
                             // Set force render state.
                             force_render_state.is_waiting_for_render = true;
                         }
-                        return None;
+                        None
                     } else {
                         // Remove force render state if not on primary output.
                         if on_primary {
