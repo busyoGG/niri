@@ -5003,7 +5003,7 @@ impl Niri {
         force_render_state.last_render_time = frame_callback_time;
         force_render_state.is_waiting_for_render = false;
 
-        debug!("Sending frame callback for surface");
+        trace!("Sending frame callback for surface");
 
         send_frames_surface_tree(
             &surface,
