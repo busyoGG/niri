@@ -5191,6 +5191,7 @@ impl Niri {
         }
 
         // Call delay timer
+        #[allow(clippy::mutable_key_type)]
         let delayed_map = delayed_surfaces.into_inner();
         for (_, (surface, interval)) in delayed_map {
             self.delay_to_send_frame_callbacks(surface, output.clone(), interval);
